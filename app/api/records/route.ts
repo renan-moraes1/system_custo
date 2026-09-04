@@ -1,7 +1,5 @@
-import { env } from 'cloudflare:workers';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getAuthenticatedUserFromRequest, getDb, isSameOrigin } from '@/app/db-auth';
 
-type Bindings = { DB: D1Database };
 type CompanyRow = { id: string; name: string; legalName: string | null; cnpj: string | null };
 
 const defaults = {
@@ -18,35 +16,23 @@ const defaults = {
   emissaoNotaCents: 7000,
 };
 
-function getDb() {
-  return (env as unknown as Bindings).DB;
-}
-
 function json(data: unknown, init?: ResponseInit) {
   return Response.json(data, init);
 }
 
-async function getCompany(db: D1Database, userId: string) {
-  return db.prepare('SELECT id, name, legal_name AS legalName, cnpj FROM companies WHERE owner_user_id = ?')
-    .bind(userId)
+async function getCompany(db: D1Database, companyId: string) {
+  return db.prepare('SELECT id, name, legal_name AS legalName, cnpj FROM companies WHERE id = ?')
+    .bind(companyId)
     .first<CompanyRow>();
 }
 
-export async function GET() {
-  const user = await getChatGPTUser();
+export async function GET(request: Request) {
+  const user = await getAuthenticatedUserFromRequest(request);
   if (!user) return json({ error: 'Faça login para continuar.' }, { status: 401 });
 
   const db = getDb();
-  const company = await getCompany(db, user.userId);
-  if (!company) {
-    return json({
-      user: { displayName: user.displayName, email: user.email },
-      company: null,
-      invoices: [],
-      expenses: [],
-      settings: defaults,
-    });
-  }
+  const company = await getCompany(db, user.companyId);
+  if (!company) return json({ error: 'Empresa não encontrada.' }, { status: 403 });
 
   const [invoiceResult, expenseResult, settings] = await Promise.all([
     db.prepare('SELECT id, note_number AS noteNumber, client_name AS clientName, issue_date AS issueDate, gross_cents AS grossCents, status, created_at AS createdAt FROM invoices WHERE company_id = ? ORDER BY issue_date DESC, created_at DESC LIMIT 100')
@@ -61,7 +47,7 @@ export async function GET() {
   ]);
 
   return json({
-    user: { displayName: user.displayName, email: user.email },
+    user: { displayName: user.name, email: user.email },
     company,
     invoices: invoiceResult.results,
     expenses: expenseResult.results,
@@ -70,37 +56,20 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  if (!isSameOrigin(request)) return json({ error: 'Origem da solicitação inválida.' }, { status: 403 });
+  const user = await getAuthenticatedUserFromRequest(request);
   if (!user) return json({ error: 'Faça login para continuar.' }, { status: 401 });
 
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await readJson(request);
+  if (!body) return json({ error: 'Solicitação inválida.' }, { status: 400 });
   const db = getDb();
-  const company = await getCompany(db, user.userId);
-
-  if (body.type === 'company') {
-    if (company) return json({ error: 'Sua empresa já está cadastrada.' }, { status: 409 });
-    const name = String(body.name ?? '').trim();
-    const legalName = String(body.legalName ?? '').trim() || null;
-    const cnpj = String(body.cnpj ?? '').replace(/\D/g, '') || null;
-    if (!name || name.length > 80 || (cnpj && cnpj.length !== 14)) {
-      return json({ error: 'Informe o nome da empresa e um CNPJ válido, se preenchido.' }, { status: 400 });
-    }
-    const companyId = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    const createCompany = db.prepare('INSERT INTO companies (id, owner_user_id, owner_email, name, legal_name, cnpj, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(companyId, user.userId, user.email, name, legalName, cnpj, createdAt);
-    const createSettings = db.prepare('INSERT INTO finance_settings (company_id, iss, pis, cofins, irpj, csll, inss_socio, inss_patronal, pro_labore_cents, contador_cents, plano_saude_cents, emissao_nota_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(companyId, defaults.iss, defaults.pis, defaults.cofins, defaults.irpj, defaults.csll, defaults.inssSocio, defaults.inssPatronal, defaults.proLaboreCents, defaults.contadorCents, defaults.planoSaudeCents, defaults.emissaoNotaCents);
-    await db.batch([createCompany, createSettings]);
-    return json({ id: companyId }, { status: 201 });
-  }
-
-  if (!company) return json({ error: 'Cadastre sua empresa antes de criar lançamentos.' }, { status: 403 });
+  const company = await getCompany(db, user.companyId);
+  if (!company) return json({ error: 'Empresa não encontrada.' }, { status: 403 });
 
   if (body.type === 'invoice') {
-    const noteNumber = String(body.noteNumber ?? '').trim();
-    const clientName = String(body.clientName ?? '').trim();
-    const issueDate = String(body.issueDate ?? '');
+    const noteNumber = textValue(body.noteNumber).trim();
+    const clientName = textValue(body.clientName).trim();
+    const issueDate = textValue(body.issueDate);
     const grossCents = Math.round(Number(body.grossCents));
     const status = body.status === 'pendente' ? 'pendente' : 'recebida';
     if (!noteNumber || !clientName || !/^\d{4}-\d{2}-\d{2}$/.test(issueDate) || !Number.isFinite(grossCents) || grossCents <= 0) {
@@ -114,9 +83,9 @@ export async function POST(request: Request) {
   }
 
   if (body.type === 'expense') {
-    const description = String(body.description ?? '').trim();
-    const category = String(body.category ?? '').trim();
-    const expenseDate = String(body.expenseDate ?? '');
+    const description = textValue(body.description).trim();
+    const category = textValue(body.category).trim();
+    const expenseDate = textValue(body.expenseDate);
     const amountCents = Math.round(Number(body.amountCents));
     if (!description || !category || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate) || !Number.isFinite(amountCents) || amountCents <= 0) {
       return json({ error: 'Preencha os dados obrigatórios do gasto.' }, { status: 400 });
@@ -146,10 +115,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const user = await getChatGPTUser();
+  if (!isSameOrigin(request)) return json({ error: 'Origem da solicitação inválida.' }, { status: 403 });
+  const user = await getAuthenticatedUserFromRequest(request);
   if (!user) return json({ error: 'Faça login para continuar.' }, { status: 401 });
   const db = getDb();
-  const company = await getCompany(db, user.userId);
+  const company = await getCompany(db, user.companyId);
   if (!company) return json({ error: 'Empresa não encontrada.' }, { status: 403 });
 
   const url = new URL(request.url);
@@ -162,3 +132,14 @@ export async function DELETE(request: Request) {
   await db.prepare(`DELETE FROM ${table} WHERE id = ? AND company_id = ?`).bind(id, company.id).run();
   return json({ ok: true });
 }
+
+async function readJson(request: Request) {
+  try {
+    const value = await request.json();
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function textValue(value: unknown) { return typeof value === 'string' ? value : ''; }

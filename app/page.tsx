@@ -160,6 +160,10 @@ export default function Home() {
   const loadData = useCallback(async () => {
     try {
       const response = await fetch('/api/records', { cache: 'no-store' });
+      if (response.status === 401) {
+        window.location.reload();
+        return;
+      }
       if (!response.ok) throw new Error();
       setData(await response.json() as FinanceData);
     } catch {
@@ -246,10 +250,19 @@ export default function Home() {
     notify('Lançamento excluído.');
   };
 
+  const logout = async () => {
+    await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'logout' }),
+    });
+    window.location.reload();
+  };
+
   if (loading) return <LoadingScreen />;
 
   if (!data.company) {
-    return <CompanyOnboarding user={data.user} onSaved={async () => { await loadData(); notify('Empresa cadastrada com sucesso.'); }} />;
+    return <main className="grid min-h-screen place-items-center bg-[#f5f7fb] px-6 text-center"><div><h1 className="text-2xl font-extrabold text-slate-950">Empresa não encontrada</h1><p className="mt-2 text-sm text-slate-500">Saia da conta e faça um novo cadastro para criar seu ambiente.</p><Button onClick={() => void logout()} className="mt-5 bg-[#2f6bff] hover:bg-[#2457d6]"><LogOut />Sair da conta</Button></div></main>;
   }
 
   return (
@@ -265,7 +278,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden text-right md:block"><p className="text-sm font-semibold text-white">{data.user?.displayName}</p><p className="text-xs text-slate-400">{data.user?.email}</p></div>
-            <a href="/signout-with-chatgpt?return_to=%2F" target="_top" aria-label="Sair da conta" className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"><LogOut className="size-4" /></a>
+            <button type="button" onClick={() => void logout()} aria-label="Sair da conta" className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"><LogOut className="size-4" /></button>
           </div>
         </div>
       </header>
@@ -301,59 +314,6 @@ export default function Home() {
 
 function LoadingScreen() {
   return <main className="grid min-h-screen place-items-center bg-[#07152f] text-white"><div className="text-center"><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#2f6bff]"><LoaderCircle className="animate-spin" /></div><p className="mt-4 text-sm font-semibold text-slate-300">Preparando seu ambiente financeiro...</p></div></main>;
-}
-
-function CompanyOnboarding({ user, onSaved }: { user: AppUser | null; onSaved: () => Promise<void> }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    const form = new FormData(event.currentTarget);
-    try {
-      await sendRecord({ type: 'company', name: form.get('name'), legalName: form.get('legalName'), cnpj: form.get('cnpj') });
-      await onSaved();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Não foi possível cadastrar a empresa.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <main className="min-h-screen bg-[#f5f7fb] text-slate-950">
-      <header className="border-b border-slate-200 bg-[#07152f] text-white"><div className="mx-auto flex min-h-20 max-w-6xl items-center justify-between px-5 sm:px-8"><div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-2xl bg-[#2f6bff] text-sm font-black">KCA</div><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8babff]">KCA Financeiro</p><p className="font-bold">Configuração inicial</p></div></div><div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user?.displayName}</p><p className="text-xs text-slate-400">{user?.email}</p></div></div></header>
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 lg:grid-cols-[.8fr_1.2fr] lg:items-center sm:px-8 sm:py-16">
-        <section>
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#2f6bff]">Primeiro acesso</p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] sm:text-5xl">Cadastre sua empresa</h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-slate-500">Esse cadastro cria um ambiente exclusivo. Notas, gastos, parâmetros e relatórios ficarão separados dos dados de todos os outros usuários.</p>
-          <div className="mt-8 space-y-4">
-            <OnboardingStep number="01" title="Identifique a empresa" text="Informe o nome usado no dia a dia e, opcionalmente, os dados fiscais." />
-            <OnboardingStep number="02" title="Ajuste os parâmetros" text="Depois do cadastro, revise impostos, pró-labore, contador e Unimed." />
-            <OnboardingStep number="03" title="Comece a lançar" text="Cadastre notas e gastos para formar seu histórico mensal." />
-          </div>
-        </section>
-        <form onSubmit={submit} className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgb(15_23_42/10%)] sm:p-9">
-          <div className="mb-7 flex items-center gap-4"><div className="grid size-12 place-items-center rounded-2xl bg-blue-50 text-[#2f6bff]"><Building2 /></div><div><h2 className="text-xl font-extrabold">Dados da empresa</h2><p className="mt-1 text-sm text-slate-500">Você poderá usar o sistema logo após salvar.</p></div></div>
-          <div className="space-y-5">
-            <Field label="Nome da empresa"><Input name="name" required maxLength={80} placeholder="Ex.: KCA Soluções em TI" className="h-12" /></Field>
-            <Field label="Razão social (opcional)"><Input name="legalName" maxLength={120} placeholder="Nome registrado da empresa" className="h-12" /></Field>
-            <Field label="CNPJ (opcional)"><Input name="cnpj" inputMode="numeric" maxLength={18} placeholder="00.000.000/0000-00" className="h-12" /></Field>
-          </div>
-          {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
-          <Button type="submit" disabled={saving} className="mt-7 h-12 w-full bg-[#2f6bff] text-base hover:bg-[#2457d6]">{saving ? <LoaderCircle className="animate-spin" /> : <Building2 />}{saving ? 'Criando seu ambiente' : 'Cadastrar empresa e continuar'}</Button>
-          <p className="mt-4 text-center text-xs leading-5 text-slate-400">Ao continuar, esta empresa ficará vinculada exclusivamente à sua conta.</p>
-        </form>
-      </div>
-    </main>
-  );
-}
-
-function OnboardingStep({ number, title, text }: { number: string; title: string; text: string }) {
-  return <div className="flex gap-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#07152f] text-xs font-black text-[#9ee87b]">{number}</span><div><h3 className="font-bold text-slate-900">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-500">{text}</p></div></div>;
 }
 
 function PageHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {

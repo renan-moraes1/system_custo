@@ -11,7 +11,44 @@ export const companies = sqliteTable(
     cnpj: text('cnpj'),
     createdAt: text('created_at').notNull(),
   },
-  (table) => [uniqueIndex('idx_companies_owner_user_id').on(table.ownerUserId)],
+  (table) => [
+    uniqueIndex('idx_companies_owner_user_id').on(table.ownerUserId),
+    uniqueIndex('idx_companies_cnpj').on(table.cnpj),
+  ],
+);
+
+export const authUsers = sqliteTable(
+  'auth_users',
+  {
+    id: text('id').primaryKey(),
+    companyId: text('company_id').notNull(),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    passwordSalt: text('password_salt').notNull(),
+    passwordIterations: integer('password_iterations').notNull().default(210000),
+    failedLoginCount: integer('failed_login_count').notNull().default(0),
+    lockedUntil: text('locked_until'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_auth_users_email').on(table.email),
+    index('idx_auth_users_company_id').on(table.companyId),
+  ],
+);
+
+export const authSessions = sqliteTable(
+  'auth_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    userId: text('user_id').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('idx_auth_sessions_user_id').on(table.userId),
+    index('idx_auth_sessions_expires_at').on(table.expiresAt),
+  ],
 );
 
 export const invoices = sqliteTable(
