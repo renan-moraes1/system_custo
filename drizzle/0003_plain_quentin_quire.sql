@@ -1,0 +1,1 @@
+ALTER TABLE `auth_users` ADD `system_role` text DEFAULT 'company_admin' NOT NULL;

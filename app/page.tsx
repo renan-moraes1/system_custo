@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, SyntheticEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -16,7 +16,9 @@ import {
   ReceiptText,
   Save,
   Settings2,
+  ShieldCheck,
   Trash2,
+  UserPlus,
   WalletCards,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -81,7 +83,8 @@ type Settings = {
 };
 
 type Company = { id: string; name: string; legalName: string | null; cnpj: string | null };
-type AppUser = { displayName: string; email: string };
+type AppUser = { displayName: string; email: string; systemRole: 'system_admin' | 'company_admin' };
+type AdminCompany = { id: string; name: string; cnpj: string | null; createdAt: string; adminName: string | null; adminEmail: string | null };
 type FinanceData = { user: AppUser | null; company: Company | null; invoices: Invoice[]; expenses: Expense[]; settings: Settings };
 
 declare global {
@@ -292,6 +295,7 @@ export default function Home() {
               <TabsTrigger value="invoices" className="px-2"><FileText />Notas fiscais</TabsTrigger>
               <TabsTrigger value="expenses" className="px-2"><WalletCards />Gastos</TabsTrigger>
               <TabsTrigger value="settings" className="px-2"><Settings2 />Parâmetros</TabsTrigger>
+              {data.user?.systemRole === 'system_admin' && <TabsTrigger value="admin" className="px-2"><ShieldCheck />Administração</TabsTrigger>}
             </TabsList>
           </div>
         </div>
@@ -307,6 +311,7 @@ export default function Home() {
         <TabsContent value="invoices"><InvoicesPanel invoices={data.invoices} settings={data.settings} onSaved={async () => { await loadData(); notify('Nota fiscal salva com sucesso.'); }} onDelete={(id) => remove('invoice', id)} /></TabsContent>
         <TabsContent value="expenses"><ExpensesPanel expenses={data.expenses} onSaved={async () => { await loadData(); notify('Gasto salvo com sucesso.'); }} onDelete={(id) => remove('expense', id)} /></TabsContent>
         <TabsContent value="settings"><SettingsPanel settings={data.settings} onSaved={async () => { await loadData(); notify('Parâmetros atualizados.'); }} /></TabsContent>
+        {data.user?.systemRole === 'system_admin' && <TabsContent value="admin"><AdminPanel notify={notify} /></TabsContent>}
       </Tabs>
     </main>
   );
@@ -527,7 +532,7 @@ function DarkSummaryLine({ label, value }: { label: string; value: number }) {
 function InvoicesPanel({ invoices, settings, onSaved, onDelete }: { invoices: Invoice[]; settings: Settings; onSaved: () => Promise<void>; onDelete: (id: string) => void }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<'recebida' | 'pendente'>('recebida');
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault(); setSaving(true);
     const form = new FormData(event.currentTarget);
     try {
@@ -559,7 +564,7 @@ function InvoicesPanel({ invoices, settings, onSaved, onDelete }: { invoices: In
 function ExpensesPanel({ expenses, onSaved, onDelete }: { expenses: Expense[]; onSaved: () => Promise<void>; onDelete: (id: string) => void }) {
   const [saving, setSaving] = useState(false);
   const [category, setCategory] = useState('Software');
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault(); setSaving(true);
     const form = new FormData(event.currentTarget);
     try {
@@ -586,9 +591,85 @@ function ExpensesPanel({ expenses, onSaved, onDelete }: { expenses: Expense[]; o
   );
 }
 
+function AdminPanel({ notify }: { notify: (text: string) => void }) {
+  const [companies, setCompanies] = useState<AdminCompany[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadCompanies = useCallback(async () => {
+    const response = await fetch('/api/admin', { cache: 'no-store' });
+    const result = await response.json() as { companies?: AdminCompany[]; error?: string };
+    if (!response.ok) throw new Error(result.error ?? 'Não foi possível carregar as empresas.');
+    setCompanies(result.companies ?? []);
+  }, []);
+
+  useEffect(() => {
+    void loadCompanies().catch((caught) => setError(caught instanceof Error ? caught.message : 'Não foi possível carregar as empresas.')).finally(() => setLoadingCompanies(false));
+  }, [loadCompanies]);
+
+  async function submit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const payload = {
+      companyName: formTextValue(form, 'companyName'),
+      cnpj: formTextValue(form, 'cnpj'),
+      adminName: formTextValue(form, 'adminName'),
+      email: formTextValue(form, 'email'),
+      password: formTextValue(form, 'password'),
+    };
+    try {
+      const response = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? 'Não foi possível cadastrar a empresa.');
+      formElement.reset();
+      await loadCompanies();
+      notify('Empresa e usuário cadastrados com sucesso.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Não foi possível cadastrar a empresa.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8">
+      <PageHeading eyebrow="Acesso restrito" title="Administração de empresas" description="Cadastre quem poderá usar o sistema. Cada usuário receberá um ambiente financeiro separado para sua empresa." />
+      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <form onSubmit={submit} className="h-fit rounded-[22px] border border-slate-200 bg-white p-5 sm:p-7">
+          <div className="mb-6 flex items-center gap-3"><div className="grid size-11 place-items-center rounded-2xl bg-blue-50 text-[#2f6bff]"><UserPlus /></div><div><h3 className="text-lg font-bold text-slate-950">Nova empresa</h3><p className="text-sm text-slate-500">Crie o primeiro acesso do responsável.</p></div></div>
+          <div className="space-y-4">
+            <Field label="Nome da empresa"><Input name="companyName" required maxLength={80} placeholder="Ex.: Empresa Exemplo" className="h-11" /></Field>
+            <Field label="CNPJ (opcional)"><Input name="cnpj" inputMode="numeric" maxLength={18} placeholder="00.000.000/0000-00" className="h-11" /></Field>
+            <Field label="Nome do responsável"><Input name="adminName" required maxLength={80} placeholder="Nome completo" className="h-11" /></Field>
+            <Field label="E-mail de acesso"><Input name="email" type="email" autoComplete="off" required placeholder="responsavel@empresa.com.br" className="h-11" /></Field>
+            <Field label="Senha inicial"><Input name="password" type="password" autoComplete="new-password" minLength={10} required placeholder="Mínimo 10 caracteres" className="h-11" /></Field>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-slate-400">Informe a senha inicial ao responsável por um canal seguro.</p>
+          {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+          <Button type="submit" disabled={saving} className="mt-5 h-11 w-full bg-[#2f6bff] hover:bg-[#2457d6]">{saving ? <LoaderCircle className="animate-spin" /> : <UserPlus />}{saving ? 'Cadastrando' : 'Cadastrar empresa'}</Button>
+        </form>
+
+        <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-7"><div><h3 className="text-lg font-bold text-slate-950">Empresas liberadas</h3><p className="mt-1 text-sm text-slate-500">{companies.length} {companies.length === 1 ? 'empresa cadastrada' : 'empresas cadastradas'}</p></div><ShieldCheck className="text-emerald-600" /></div>
+          {loadingCompanies ? <div className="grid min-h-52 place-items-center text-slate-400"><LoaderCircle className="animate-spin" /></div> : companies.length === 0 ? <EmptyState icon={<Building2 />} title="Nenhuma empresa cadastrada" text="Use o formulário para liberar o primeiro acesso." /> : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Empresa</TableHead><TableHead>Responsável</TableHead><TableHead>E-mail</TableHead><TableHead>Cadastro</TableHead></TableRow></TableHeader>
+              <TableBody>{companies.map((company) => <TableRow key={company.id}><TableCell><p className="font-bold text-slate-900">{company.name}</p><p className="text-xs text-slate-400">{company.cnpj || 'CNPJ não informado'}</p></TableCell><TableCell>{company.adminName ?? '—'}</TableCell><TableCell>{company.adminEmail ?? '—'}</TableCell><TableCell>{shortDate.format(new Date(company.createdAt))}</TableCell></TableRow>)}</TableBody>
+            </Table>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel({ settings, onSaved }: { settings: Settings; onSaved: () => Promise<void> }) {
   const [saving, setSaving] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault(); setSaving(true);
     const form = new FormData(event.currentTarget);
     const percentage = (name: string) => Math.round(Number(form.get(name)) * 100);
@@ -634,6 +715,11 @@ function SummaryLine({ label, value, negative }: { label: string; value: number;
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-600">{label}</span>{children}</label>;
+}
+
+function formTextValue(form: FormData, name: string) {
+  const value = form.get(name);
+  return typeof value === 'string' ? value : '';
 }
 
 function StatusBadge({ status }: { status: Invoice['status'] }) {

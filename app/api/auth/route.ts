@@ -1,5 +1,6 @@
 import {
   createSession,
+  getAdminSetupToken,
   getAuthenticatedUserFromRequest,
   getDb,
   hashPassword,
@@ -8,6 +9,7 @@ import {
   PASSWORD_ITERATIONS,
   sessionCookie,
   SESSION_COOKIE,
+  secureSecretEqual,
   verifyPassword,
 } from '@/app/db-auth';
 
@@ -34,19 +36,28 @@ export async function POST(request: Request) {
   if (!body) return Response.json({ error: 'Solicitação inválida.' }, { status: 400 });
   const action = textValue(body.action);
 
-  if (action === 'register') return register(request, body);
+  if (action === 'setupAdmin') return setupAdmin(request, body);
   if (action === 'login') return login(request, body);
   if (action === 'logout') return logout(request);
   return Response.json({ error: 'Ação inválida.' }, { status: 400 });
 }
 
-async function register(request: Request, body: Record<string, unknown>) {
+async function setupAdmin(request: Request, body: Record<string, unknown>) {
   const db = getDb();
+  const setupToken = textValue(body.setupToken);
+  const configuredToken = getAdminSetupToken();
   const name = textValue(body.name).trim();
   const companyName = textValue(body.companyName).trim();
   const email = normalizeEmail(body.email);
   const password = textValue(body.password);
   const cnpj = textValue(body.cnpj).replace(/\D/g, '') || null;
+
+  if (configuredToken.length < 24 || !(await secureSecretEqual(setupToken, configuredToken))) {
+    return Response.json({ error: 'Código de ativação inválido.' }, { status: 403 });
+  }
+
+  const adminExists = await db.prepare("SELECT id FROM auth_users WHERE system_role = 'system_admin' LIMIT 1").first();
+  if (adminExists) return Response.json({ error: 'O administrador principal já foi configurado.' }, { status: 409 });
 
   if (name.length < 2 || name.length > 80 || companyName.length < 2 || companyName.length > 80) {
     return Response.json({ error: 'Informe seu nome e o nome da empresa.' }, { status: 400 });
@@ -77,8 +88,8 @@ async function register(request: Request, body: Record<string, unknown>) {
     statements.push(db.prepare('INSERT INTO finance_settings (company_id, iss, pis, cofins, irpj, csll, inss_socio, inss_patronal, pro_labore_cents, contador_cents, plano_saude_cents, emissao_nota_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(companyId, ...defaults));
   }
-  statements.push(db.prepare('INSERT INTO auth_users (id, company_id, email, name, password_hash, password_salt, password_iterations, failed_login_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)')
-    .bind(userId, companyId, email, name, passwordData.hash, passwordData.salt, passwordData.iterations, createdAt));
+  statements.push(db.prepare('INSERT INTO auth_users (id, company_id, email, name, password_hash, password_salt, password_iterations, system_role, failed_login_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)')
+    .bind(userId, companyId, email, name, passwordData.hash, passwordData.salt, passwordData.iterations, 'system_admin', createdAt));
 
   try {
     await db.batch(statements);

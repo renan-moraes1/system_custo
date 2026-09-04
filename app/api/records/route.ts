@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   ]);
 
   return json({
-    user: { displayName: user.name, email: user.email },
+    user: { displayName: user.name, email: user.email, systemRole: user.systemRole },
     company,
     invoices: invoiceResult.results,
     expenses: expenseResult.results,

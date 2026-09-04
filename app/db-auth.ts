@@ -1,13 +1,14 @@
 import { env } from 'cloudflare:workers';
 import { cookies } from 'next/headers';
 
-type Bindings = { DB: D1Database };
+type Bindings = { DB: D1Database; ADMIN_SETUP_TOKEN?: string };
 
 export type AuthenticatedUser = {
   userId: string;
   companyId: string;
   email: string;
   name: string;
+  systemRole: 'system_admin' | 'company_admin';
 };
 
 export const SESSION_COOKIE = 'kca_session';
@@ -16,6 +17,10 @@ export const PASSWORD_ITERATIONS = 210000;
 
 export function getDb() {
   return (env as unknown as Bindings).DB;
+}
+
+export function getAdminSetupToken() {
+  return (env as unknown as Bindings).ADMIN_SETUP_TOKEN ?? '';
 }
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
@@ -30,7 +35,7 @@ export async function getAuthenticatedUserFromRequest(request: Request): Promise
 async function findSessionUser(token: string | null): Promise<AuthenticatedUser | null> {
   if (!token || token.length < 32 || token.length > 128) return null;
   const tokenHash = await sha256(token);
-  return getDb().prepare(`SELECT u.id AS userId, u.company_id AS companyId, u.email, u.name
+  return getDb().prepare(`SELECT u.id AS userId, u.company_id AS companyId, u.email, u.name, u.system_role AS systemRole
     FROM auth_sessions s
     INNER JOIN auth_users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > ?`)
@@ -62,6 +67,11 @@ export async function verifyPassword(password: string, expectedHash: string, sal
 
 export async function hashSessionToken(token: string) {
   return sha256(token);
+}
+
+export async function secureSecretEqual(left: string, right: string) {
+  if (!left || !right) return false;
+  return constantTimeEqual(await sha256(left), await sha256(right));
 }
 
 export function sessionCookie(token: string, request: Request, maxAge = SESSION_DURATION_SECONDS) {

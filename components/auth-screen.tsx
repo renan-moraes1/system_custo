@@ -1,12 +1,11 @@
 'use client';
 
 import { SyntheticEvent, useState } from 'react';
-import { ArrowRight, BarChart3, Building2, LoaderCircle, LockKeyhole, ReceiptText } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BarChart3, Building2, KeyRound, LoaderCircle, LockKeyhole, ReceiptText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'setup';
 
 export function AuthScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -19,7 +18,7 @@ export function AuthScreen() {
     setError('');
     const form = new FormData(event.currentTarget);
     const password = formValue(form, 'password');
-    if (mode === 'register' && password !== formValue(form, 'confirmPassword')) {
+    if (mode === 'setup' && password !== formValue(form, 'confirmPassword')) {
       setError('As senhas não coincidem.');
       setLoading(false);
       return;
@@ -27,7 +26,7 @@ export function AuthScreen() {
 
     const payload = mode === 'login'
       ? { action: 'login', email: formValue(form, 'email'), password }
-      : { action: 'register', name: formValue(form, 'name'), companyName: formValue(form, 'companyName'), cnpj: formValue(form, 'cnpj'), email: formValue(form, 'email'), password };
+      : { action: 'setupAdmin', setupToken: formValue(form, 'setupToken'), name: formValue(form, 'name'), companyName: formValue(form, 'companyName'), cnpj: formValue(form, 'cnpj'), email: formValue(form, 'email'), password };
 
     try {
       const response = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -64,13 +63,8 @@ export function AuthScreen() {
       <section className="flex items-center justify-center bg-[#f5f7fb] p-6 text-slate-950 sm:p-12">
         <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-7 shadow-[0_28px_80px_rgb(15_23_42/12%)] sm:p-9">
           <div className="mb-6 grid size-14 place-items-center rounded-2xl bg-blue-50 text-[#2f6bff]"><Building2 /></div>
-          <Tabs value={mode} onValueChange={(value) => { setMode(value as AuthMode); setError(''); }}>
-            <TabsList className="mb-7 h-11 w-full bg-slate-100 p-1">
-              <TabsTrigger value="login" className="h-full">Entrar</TabsTrigger>
-              <TabsTrigger value="register" className="h-full">Criar conta</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login">
+          {mode === 'login' ? (
+            <>
               <AuthHeading title="Acesse sua empresa" text="Entre com o e-mail e a senha cadastrados." />
               <form onSubmit={submit} className="mt-6 space-y-4">
                 <AuthField label="E-mail"><Input name="email" type="email" autoComplete="email" required placeholder="voce@empresa.com.br" className="h-12" /></AuthField>
@@ -78,11 +72,14 @@ export function AuthScreen() {
                 <AuthError message={error} />
                 <Button type="submit" disabled={loading} className="h-12 w-full bg-[#2f6bff] text-base hover:bg-[#2457d6]">{loading ? <LoaderCircle className="animate-spin" /> : <>Entrar <ArrowRight /></>}</Button>
               </form>
-            </TabsContent>
-
-            <TabsContent value="register">
-              <AuthHeading title="Crie seu ambiente" text="Cadastre a empresa e o usuário administrador." />
+              <button type="button" onClick={() => { setMode('setup'); setError(''); }} className="mx-auto mt-5 flex items-center gap-2 text-xs font-semibold text-slate-400 transition hover:text-[#2f6bff]"><KeyRound className="size-3.5" />Primeiro acesso do administrador</button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={() => { setMode('login'); setError(''); }} className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-[#2f6bff]"><ArrowLeft className="size-4" />Voltar ao login</button>
+              <AuthHeading title="Ativar administrador" text="Use o código de ativação fornecido na implantação." />
               <form onSubmit={submit} className="mt-6 space-y-4">
+                <AuthField label="Código de ativação"><Input name="setupToken" type="password" autoComplete="off" required placeholder="Código de primeiro acesso" className="h-12" /></AuthField>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <AuthField label="Seu nome"><Input name="name" autoComplete="name" required placeholder="Nome completo" className="h-12" /></AuthField>
                   <AuthField label="Empresa"><Input name="companyName" autoComplete="organization" required placeholder="Nome da empresa" className="h-12" /></AuthField>
@@ -95,10 +92,10 @@ export function AuthScreen() {
                 </div>
                 <p className="text-xs leading-5 text-slate-400">Use pelo menos 10 caracteres, incluindo uma letra e um número.</p>
                 <AuthError message={error} />
-                <Button type="submit" disabled={loading} className="h-12 w-full bg-[#2f6bff] text-base hover:bg-[#2457d6]">{loading ? <LoaderCircle className="animate-spin" /> : <><Building2 />Criar conta e empresa</>}</Button>
+                <Button type="submit" disabled={loading} className="h-12 w-full bg-[#2f6bff] text-base hover:bg-[#2457d6]">{loading ? <LoaderCircle className="animate-spin" /> : <><LockKeyhole />Ativar conta principal</>}</Button>
               </form>
-            </TabsContent>
-          </Tabs>
+            </>
+          )}
           <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-100 pt-5 text-xs text-slate-400"><LockKeyhole className="size-3.5" /> Sessão protegida e senha armazenada de forma criptográfica.</div>
         </div>
       </section>

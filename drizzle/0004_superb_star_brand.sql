@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `idx_auth_users_single_system_admin` ON `auth_users` (`system_role`) WHERE "auth_users"."system_role" = 'system_admin';

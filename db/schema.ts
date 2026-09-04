@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const companies = sqliteTable(
   'companies',
@@ -27,12 +28,14 @@ export const authUsers = sqliteTable(
     passwordHash: text('password_hash').notNull(),
     passwordSalt: text('password_salt').notNull(),
     passwordIterations: integer('password_iterations').notNull().default(210000),
+    systemRole: text('system_role').notNull().default('company_admin'),
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: text('locked_until'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
     uniqueIndex('idx_auth_users_email').on(table.email),
+    uniqueIndex('idx_auth_users_single_system_admin').on(table.systemRole).where(sql`${table.systemRole} = 'system_admin'`),
     index('idx_auth_users_company_id').on(table.companyId),
   ],
 );
