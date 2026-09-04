@@ -291,7 +291,7 @@ export default function Home() {
           <div className="mx-auto max-w-[1500px] overflow-x-auto px-5 sm:px-8">
             <TabsList variant="line" className="h-14 gap-5">
               <TabsTrigger value="dashboard" className="px-2"><LayoutDashboard />Visão geral</TabsTrigger>
-              <TabsTrigger value="monthly" className="px-2"><CalendarRange />Histórico mensal</TabsTrigger>
+              <TabsTrigger value="monthly" className="px-2"><CalendarRange />DRE mensal</TabsTrigger>
               <TabsTrigger value="invoices" className="px-2"><FileText />Notas fiscais</TabsTrigger>
               <TabsTrigger value="expenses" className="px-2"><WalletCards />Gastos</TabsTrigger>
               <TabsTrigger value="settings" className="px-2"><Settings2 />Parâmetros</TabsTrigger>
@@ -441,12 +441,28 @@ function MonthlyHistory({ invoices, expenses, settings }: { invoices: Invoice[];
     const received = notes.filter((invoice) => invoice.status === 'recebida');
     const monthExpenses = expenses.filter((expense) => expense.expenseDate.startsWith(targetMonth));
     const gross = received.reduce((sum, invoice) => sum + invoice.grossCents / 100, 0);
+    const pendingGross = notes.filter((invoice) => invoice.status === 'pendente').reduce((sum, invoice) => sum + invoice.grossCents / 100, 0);
     const taxes = received.reduce((sum, invoice) => sum + calculate(invoice.grossCents / 100, settings).taxes, 0);
     const fixed = received.reduce((sum, invoice) => sum + calculate(invoice.grossCents / 100, settings).fixed, 0);
     const profit = received.reduce((sum, invoice) => sum + calculate(invoice.grossCents / 100, settings).profit, 0);
     const receivedTotal = received.reduce((sum, invoice) => sum + calculate(invoice.grossCents / 100, settings).totalReceived, 0);
     const extraExpenses = monthExpenses.reduce((sum, expense) => sum + expense.amountCents / 100, 0);
-    return { notes, monthExpenses, gross, taxes, fixed, profit, receivedTotal, extraExpenses, adjusted: profit - extraExpenses };
+    const noteCount = received.length;
+    const proLabore = noteCount * settings.proLaboreCents / 100;
+    const contador = noteCount * settings.contadorCents / 100;
+    const unimed = noteCount * settings.planoSaudeCents / 100;
+    const emissaoNota = noteCount * settings.emissaoNotaCents / 100;
+    const proLaboreNet = receivedTotal - profit;
+    const adjusted = profit - extraExpenses;
+    return {
+      notes, monthExpenses, gross, taxes, fixed, profit, receivedTotal, extraExpenses, adjusted,
+      proLabore, contador, unimed, emissaoNota, proLaboreNet,
+      totalCosts: taxes + fixed + extraExpenses,
+      cashToOwner: adjusted + proLaboreNet,
+      noteCount,
+      pendingCount: notes.length - noteCount,
+      pendingGross,
+    };
   };
 
   const current = summarize(month);
@@ -455,7 +471,7 @@ function MonthlyHistory({ invoices, expenses, settings }: { invoices: Invoice[];
   return (
     <div className="mx-auto max-w-[1500px] p-5 sm:p-8">
       <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <PageHeading eyebrow="Histórico mensal" title="Fechamento e evolução" description="Consulte o resultado consolidado do mês, abra o cálculo de cada nota e compare o desempenho com o período anterior." />
+        <PageHeading eyebrow="DRE e fluxo de caixa" title="Quanto entrou, quanto custou e quanto sobrou" description="O fechamento considera apenas notas recebidas no mês. Notas pendentes permanecem no histórico, mas não entram no caixa." />
         <Field label="Mês de referência">
           <Select value={month} onValueChange={(value) => setMonth(String(value))}>
             <SelectTrigger className="h-11 min-w-56 bg-white"><SelectValue /></SelectTrigger>
@@ -465,10 +481,46 @@ function MonthlyHistory({ invoices, expenses, settings }: { invoices: Invoice[];
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ComparisonCard label="Valor bruto recebido" current={current.gross} previous={previous.gross} />
-        <ComparisonCard label="Impostos" current={current.taxes} previous={previous.taxes} inverse />
-        <ComparisonCard label="Lucro líquido" current={current.profit} previous={previous.profit} />
-        <ComparisonCard label="Resultado após extras" current={current.adjusted} previous={previous.adjusted} />
+        <ComparisonCard label="Receita recebida" current={current.gross} previous={previous.gross} />
+        <ComparisonCard label="Custos totais" current={current.totalCosts} previous={previous.totalCosts} inverse />
+        <ComparisonCard label="Total líquido recebido" current={current.cashToOwner} previous={previous.cashToOwner} />
+        <ComparisonCard label="Sobra em caixa" current={current.adjusted} previous={previous.adjusted} />
+      </section>
+
+      <section className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
+        <div className="rounded-[22px] border border-slate-200 bg-white p-5 sm:p-7">
+          <div className="mb-5 flex items-center justify-between gap-4"><div><p className="text-sm font-semibold text-slate-500">Demonstrativo do resultado</p><h3 className="mt-1 text-xl font-bold text-slate-950">DRE — {monthLabel(month)}</h3></div><ReceiptText className="text-[#2f6bff]" /></div>
+          <div className="space-y-1">
+            <DreLine label="Receita bruta recebida" value={current.gross} strong />
+            <DreLine label="(-) Tributos e INSS patronal" value={-current.taxes} negative />
+            <DreLine label="Receita após impostos" value={current.gross - current.taxes} subtotal />
+            <DreLine label="(-) Pró-labore bruto" value={-current.proLabore} negative />
+            <DreLine label="(-) Contador" value={-current.contador} negative />
+            <DreLine label="(-) Unimed" value={-current.unimed} negative />
+            <DreLine label="(-) Emissão das notas" value={-current.emissaoNota} negative />
+            <DreLine label="Resultado operacional" value={current.profit} subtotal />
+            <DreLine label="(-) Gastos extras" value={-current.extraExpenses} negative />
+            <DreLine label="Sobra da empresa no mês" value={current.adjusted} result />
+          </div>
+        </div>
+
+        <div className="rounded-[22px] bg-[#07152f] p-6 text-white shadow-[0_22px_60px_rgb(15_23_42/14%)]">
+          <p className="text-xs font-bold uppercase tracking-[0.13em] text-[#8babff]">Resumo do caixa</p>
+          <h3 className="mt-2 text-xl font-bold">Dinheiro recebido</h3>
+          <div className="mt-6 space-y-3">
+            <DarkSummaryLine label="Entrou pelas notas" value={current.gross} />
+            <DarkSummaryLine label="Total de saídas" value={-current.totalCosts} />
+            <DarkSummaryLine label="Pró-labore líquido" value={current.proLaboreNet} />
+          </div>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/7 p-5">
+            <p className="text-sm text-slate-300">Total líquido recebido</p>
+            <strong className="mt-1 block text-3xl tracking-[-0.04em] text-white">{currency.format(current.cashToOwner)}</strong>
+            <div className="my-4 border-t border-white/10" />
+            <p className="text-sm text-slate-300">Sobra mantida na empresa</p>
+            <strong className={`mt-1 block text-3xl tracking-[-0.04em] ${current.adjusted >= 0 ? 'text-[#b8f58f]' : 'text-red-300'}`}>{currency.format(current.adjusted)}</strong>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-slate-400">Total líquido recebido = pró-labore líquido + sobra da empresa após os gastos extras.</p>
+        </div>
       </section>
 
       <section className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -480,21 +532,20 @@ function MonthlyHistory({ invoices, expenses, settings }: { invoices: Invoice[];
           {current.notes.length ? (
             <Table>
               <TableHeader><TableRow><TableHead className="pl-5">Nota</TableHead><TableHead>Cliente</TableHead><TableHead>Situação</TableHead><TableHead>Bruto</TableHead><TableHead>Impostos</TableHead><TableHead>Custos fixos</TableHead><TableHead>Lucro</TableHead><TableHead className="pr-5">Total recebido</TableHead></TableRow></TableHeader>
-              <TableBody>{current.notes.map((invoice) => { const detail = calculate(invoice.grossCents / 100, settings); return <TableRow key={invoice.id}><TableCell className="pl-5 font-bold text-slate-900">{invoice.noteNumber}</TableCell><TableCell>{invoice.clientName}</TableCell><TableCell><StatusBadge status={invoice.status} /></TableCell><TableCell>{currency.format(invoice.grossCents / 100)}</TableCell><TableCell className="text-blue-700">{currency.format(detail.taxes)}</TableCell><TableCell className="text-orange-700">{currency.format(detail.fixed)}</TableCell><TableCell className="font-bold text-emerald-700">{currency.format(detail.profit)}</TableCell><TableCell className="pr-5 font-bold text-slate-900">{currency.format(detail.totalReceived)}</TableCell></TableRow>; })}</TableBody>
+              <TableBody>{current.notes.map((invoice) => { const detail = calculate(invoice.grossCents / 100, settings); const inCash = invoice.status === 'recebida'; return <TableRow key={invoice.id}><TableCell className="pl-5 font-bold text-slate-900">{invoice.noteNumber}</TableCell><TableCell>{invoice.clientName}</TableCell><TableCell><StatusBadge status={invoice.status} /></TableCell><TableCell>{currency.format(invoice.grossCents / 100)}</TableCell><TableCell className="text-blue-700">{inCash ? currency.format(detail.taxes) : '—'}</TableCell><TableCell className="text-orange-700">{inCash ? currency.format(detail.fixed) : '—'}</TableCell><TableCell className="font-bold text-emerald-700">{inCash ? currency.format(detail.profit) : '—'}</TableCell><TableCell className="pr-5 font-bold text-slate-900">{inCash ? currency.format(detail.totalReceived) : '—'}</TableCell></TableRow>; })}</TableBody>
             </Table>
           ) : <EmptyState icon={<CalendarRange />} title="Nenhuma nota neste mês" text="Escolha outro período ou registre uma nota fiscal para iniciar o histórico." />}
         </div>
 
         <aside className="space-y-5">
           <div className="rounded-[22px] bg-[#07152f] p-5 text-white">
-            <p className="text-xs font-bold uppercase tracking-[0.13em] text-[#8babff]">Fechamento do mês</p>
-            <div className="mt-5 space-y-3">
-              <DarkSummaryLine label="Valor bruto" value={current.gross} />
-              <DarkSummaryLine label="Impostos" value={-current.taxes} />
-              <DarkSummaryLine label="Custos fixos" value={-current.fixed} />
-              <DarkSummaryLine label="Gastos extras" value={-current.extraExpenses} />
-              <div className="border-t border-white/10 pt-4"><p className="text-sm text-slate-400">Resultado ajustado</p><strong className="mt-1 block text-3xl tracking-[-0.04em] text-[#b8f58f]">{currency.format(current.adjusted)}</strong></div>
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-[#8babff]">Situação das notas</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-white/7 p-4"><p className="text-xs text-slate-400">Recebidas</p><strong className="mt-1 block text-2xl">{current.noteCount}</strong></div>
+              <div className="rounded-2xl bg-white/7 p-4"><p className="text-xs text-slate-400">Pendentes</p><strong className="mt-1 block text-2xl text-amber-300">{current.pendingCount}</strong></div>
             </div>
+            <div className="mt-4 border-t border-white/10 pt-4"><p className="text-sm text-slate-400">Ainda a receber</p><strong className="mt-1 block text-2xl tracking-[-0.04em] text-amber-300">{currency.format(current.pendingGross)}</strong></div>
+            <div className="mt-4 border-t border-white/10 pt-4"><p className="text-sm text-slate-400">Ticket médio recebido</p><strong className="mt-1 block text-xl">{currency.format(current.noteCount ? current.gross / current.noteCount : 0)}</strong></div>
           </div>
           <div className="rounded-[22px] border border-slate-200 bg-white p-5">
             <p className="text-sm font-semibold text-slate-500">Gastos extras do mês</p>
@@ -527,6 +578,11 @@ function ComparisonCard({ label, current, previous, inverse }: { label: string; 
 
 function DarkSummaryLine({ label, value }: { label: string; value: number }) {
   return <div className="flex items-center justify-between text-sm"><span className="text-slate-400">{label}</span><strong className={value < 0 ? 'text-slate-200' : 'text-white'}>{currency.format(value)}</strong></div>;
+}
+
+function DreLine({ label, value, strong, negative, subtotal, result }: { label: string; value: number; strong?: boolean; negative?: boolean; subtotal?: boolean; result?: boolean }) {
+  if (result) return <div className={`mt-3 flex items-center justify-between gap-4 rounded-2xl px-4 py-4 ${value >= 0 ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-900'}`}><span className="font-extrabold">{label}</span><strong className="text-xl">{currency.format(value)}</strong></div>;
+  return <div className={`flex items-center justify-between gap-4 border-b border-slate-100 px-1 py-3 text-sm ${subtotal ? 'mt-1 border-t border-slate-200 font-bold text-slate-950' : ''}`}><span className={strong ? 'font-bold text-slate-950' : negative ? 'text-slate-500' : 'text-slate-700'}>{label}</span><strong className={negative ? 'text-orange-700' : 'text-slate-950'}>{currency.format(value)}</strong></div>;
 }
 
 function InvoicesPanel({ invoices, settings, onSaved, onDelete }: { invoices: Invoice[]; settings: Settings; onSaved: () => Promise<void>; onDelete: (id: string) => void }) {
