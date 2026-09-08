@@ -1,6 +1,5 @@
 .git
 .gitignore
-.openai
 .dev.vars
 .env
 .env.*
