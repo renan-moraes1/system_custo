@@ -11,6 +11,7 @@ function readLocalSetting(name) {
 
 const requestedPort = Number(process.env.KCA_PORT || process.env.PORT || readLocalSetting('KCA_PORT') || 3000);
 const port = String(Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535 ? requestedPort : 3000);
+const envFileArgs = fs.existsSync(envFile) ? ['--env-file', envFile] : [];
 
 module.exports = {
   apps: [
@@ -22,8 +23,7 @@ module.exports = {
         'dev',
         '--config',
         'dist/server/wrangler.json',
-        '--env-file',
-        envFile,
+        ...envFileArgs,
         '--persist-to',
         '.wrangler/state',
         '--ip',

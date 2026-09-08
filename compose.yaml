@@ -7,12 +7,13 @@ services:
     container_name: kca-financeiro
     restart: unless-stopped
     init: true
+    env_file:
+      - ./.dev.vars
     environment:
       KCA_PORT: "3001"
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
-      - ./.dev.vars:/app/.dev.vars:ro
       - kca_d1_data:/app/.wrangler/state
     healthcheck:
       test:

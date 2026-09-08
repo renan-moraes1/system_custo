@@ -26,7 +26,7 @@ docker compose ps
 docker compose logs --tail=100 kca-financeiro
 ```
 
-O container executa o PM2 em modo próprio para containers e possui a política `restart: unless-stopped`. Depois de uma falha ou reinicialização da VPS, ele volta automaticamente. A aplicação fica disponível somente em `127.0.0.1:3001`, sem conflito com as aplicações das portas 3000 e 6005.
+O Docker Compose lê `.dev.vars` e injeta essas variáveis diretamente no container, sem montar o arquivo de segredos. O container executa o PM2 em modo próprio para containers e possui a política `restart: unless-stopped`. Depois de uma falha ou reinicialização da VPS, ele volta automaticamente. A aplicação fica disponível somente em `127.0.0.1:3001`, sem conflito com as aplicações das portas 3000 e 6005.
 
 O banco local é preservado no volume Docker `kca_financeiro_d1_data`. Não remova esse volume durante atualizações. Para atualizar o código:
 
