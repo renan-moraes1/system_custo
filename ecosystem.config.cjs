@@ -1,4 +1,16 @@
-const port = String(process.env.PORT || 3000);
+const fs = require('node:fs');
+const path = require('node:path');
+
+const envFile = path.join(__dirname, '.dev.vars');
+
+function readLocalSetting(name) {
+  if (!fs.existsSync(envFile)) return undefined;
+  const line = fs.readFileSync(envFile, 'utf8').split(/\r?\n/).find((item) => item.trim().startsWith(`${name}=`));
+  return line?.slice(line.indexOf('=') + 1).trim().replace(/^['"]|['"]$/g, '');
+}
+
+const requestedPort = Number(process.env.KCA_PORT || process.env.PORT || readLocalSetting('KCA_PORT') || 3000);
+const port = String(Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535 ? requestedPort : 3000);
 
 module.exports = {
   apps: [
@@ -10,6 +22,8 @@ module.exports = {
         'dev',
         '--config',
         'dist/server/wrangler.json',
+        '--env-file',
+        envFile,
         '--persist-to',
         '.wrangler/state',
         '--ip',

@@ -79,6 +79,10 @@ export const expenses = sqliteTable(
     companyId: text('company_id'),
     description: text('description').notNull(),
     category: text('category').notNull(),
+    scope: text('scope').notNull().default('pj'),
+    paymentMethod: text('payment_method').notNull().default('pix'),
+    paymentDetail: text('payment_detail'),
+    installments: integer('installments').notNull().default(1),
     expenseDate: text('expense_date').notNull(),
     amountCents: integer('amount_cents').notNull(),
     createdAt: text('created_at').notNull(),
@@ -86,6 +90,22 @@ export const expenses = sqliteTable(
   (table) => [
     index('idx_expenses_expense_date').on(table.expenseDate),
     index('idx_expenses_company_date').on(table.companyId, table.expenseDate),
+  ],
+);
+
+export const expenseCategories = sqliteTable(
+  'expense_categories',
+  {
+    id: text('id').primaryKey(),
+    companyId: text('company_id').notNull(),
+    name: text('name').notNull(),
+    scope: text('scope').notNull(),
+    keywords: text('keywords').notNull().default(''),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_expense_categories_company_scope_name').on(table.companyId, table.scope, table.name),
+    index('idx_expense_categories_company_scope').on(table.companyId, table.scope),
   ],
 );
 

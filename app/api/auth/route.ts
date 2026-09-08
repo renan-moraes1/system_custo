@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
 async function setupAdmin(request: Request, body: Record<string, unknown>) {
   const db = getDb();
-  const setupToken = textValue(body.setupToken);
+  const setupToken = textValue(body.setupToken).trim();
   const configuredToken = getAdminSetupToken();
   const name = textValue(body.name).trim();
   const companyName = textValue(body.companyName).trim();

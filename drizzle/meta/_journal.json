@@ -36,6 +36,27 @@
       "when": 1788553348690,
       "tag": "0004_superb_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788871225448,
+      "tag": "0005_supreme_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788875777208,
+      "tag": "0006_tiny_violations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788890392115,
+      "tag": "0007_right_the_fury",
+      "breakpoints": true
     }
   ]
 }

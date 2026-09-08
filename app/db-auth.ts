@@ -20,7 +20,7 @@ export function getDb() {
 }
 
 export function getAdminSetupToken() {
-  return (env as unknown as Bindings).ADMIN_SETUP_TOKEN ?? '';
+  return ((env as unknown as Bindings).ADMIN_SETUP_TOKEN ?? '').trim();
 }
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
