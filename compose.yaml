@@ -1,0 +1,31 @@
+services:
+  kca-financeiro:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kca-financeiro:local
+    container_name: kca-financeiro
+    restart: unless-stopped
+    init: true
+    environment:
+      KCA_PORT: "3001"
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./.dev.vars:/app/.dev.vars:ro
+      - kca_d1_data:/app/.wrangler/state
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    stop_grace_period: 20s
+
+volumes:
+  kca_d1_data:
+    name: kca_financeiro_d1_data
