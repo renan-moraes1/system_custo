@@ -6,7 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN npm run build \
+    && test -f /app/dist/server/wrangler.json
 
 
 FROM node:22-bookworm-slim AS runtime
@@ -23,7 +24,9 @@ COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/scripts ./scripts
 COPY --from=build --chown=node:node /app/ecosystem.config.cjs ./ecosystem.config.cjs
 
-RUN mkdir -p /app/.wrangler/state && chown -R node:node /app
+RUN test -f /app/dist/server/wrangler.json \
+    && mkdir -p /app/.wrangler/state \
+    && chown -R node:node /app
 
 USER node
 
