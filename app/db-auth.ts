@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { cookies } from 'next/headers';
 
-type Bindings = { DB: D1Database; ADMIN_SETUP_TOKEN?: string };
+type Bindings = { DB: D1Database; ADMIN_SETUP_TOKEN?: string; APP_ORIGIN?: string };
 
 export type AuthenticatedUser = {
   userId: string;
@@ -75,14 +75,53 @@ export async function secureSecretEqual(left: string, right: string) {
 }
 
 export function sessionCookie(token: string, request: Request, maxAge = SESSION_DURATION_SECONDS) {
-  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const secure = getEffectiveRequestOrigin(request)?.startsWith('https://') ? '; Secure' : '';
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
 export function isSameOrigin(request: Request) {
   const origin = request.headers.get('origin');
   if (!origin) return true;
-  try { return new URL(origin).origin === new URL(request.url).origin; } catch { return false; }
+  const requestOrigin = normalizeOrigin(origin);
+  if (!requestOrigin) return false;
+
+  const configuredOrigin = normalizeOrigin((env as unknown as Bindings).APP_ORIGIN);
+  if (configuredOrigin) return requestOrigin === configuredOrigin;
+
+  const allowedOrigins = new Set([
+    normalizeOrigin(request.url),
+    getForwardedOrigin(request),
+  ].filter((value): value is string => Boolean(value)));
+
+  return allowedOrigins.has(requestOrigin);
+}
+
+function getEffectiveRequestOrigin(request: Request) {
+  return normalizeOrigin((env as unknown as Bindings).APP_ORIGIN)
+    ?? getForwardedOrigin(request)
+    ?? normalizeOrigin(request.url);
+}
+
+function getForwardedOrigin(request: Request) {
+  const protocol = firstForwardedValue(request.headers.get('x-forwarded-proto'))?.toLowerCase();
+  const host = firstForwardedValue(request.headers.get('x-forwarded-host')) ?? request.headers.get('host');
+  if ((protocol !== 'http' && protocol !== 'https') || !host) return null;
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
+function firstForwardedValue(value: string | null) {
+  return value?.split(',')[0]?.trim() || null;
+}
+
+function normalizeOrigin(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
 }
 
 function readCookie(header: string | null, name: string) {

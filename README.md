@@ -15,8 +15,11 @@ Mantenha a aplicação na porta 3001 e informe uma chave secreta forte:
 
 ```text
 KCA_PORT=3001
+APP_ORIGIN=https://financeiro.seudominio.com.br
 ADMIN_SETUP_TOKEN=troque-por-uma-chave-forte-com-24-ou-mais-caracteres
 ```
+
+Substitua `APP_ORIGIN` pelo endereço HTTPS usado no navegador, sem barra no final. A validação de origem e o cookie seguro usam esse endereço quando a aplicação está atrás do Apache ou de outro proxy reverso.
 
 Compile, aplique as migrações e mantenha o serviço em execução:
 
@@ -60,6 +63,7 @@ Copie `.dev.vars.example` para `.dev.vars` e defina o código secreto do primeir
 
 ```text
 KCA_PORT=3001
+APP_ORIGIN=https://financeiro.seudominio.com.br
 ADMIN_SETUP_TOKEN=troque-por-uma-chave-forte-com-24-ou-mais-caracteres
 ```
 

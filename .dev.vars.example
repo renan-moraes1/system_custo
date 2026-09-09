@@ -1,5 +1,8 @@
 # Porta usada pelo sistema KCA na VPS
 KCA_PORT=3001
 
+# Endereço público completo, sem barra no final
+APP_ORIGIN=https://financeiro.seudominio.com.br
+
 # Troque por uma chave forte antes de iniciar a aplicação
 ADMIN_SETUP_TOKEN=troque-por-uma-chave-forte-com-24-ou-mais-caracteres
